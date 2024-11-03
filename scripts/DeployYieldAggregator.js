@@ -1,8 +1,5 @@
-const { ethers } = require("ethers");
-const fs = require("fs");
-const path = require("path");
-
-const YieldAggregatorArtifact = require("../artifacts/contracts/YieldAggregator.sol/YieldAggregator.json");
+const hre = require("hardhat");
+const { ethers } = require("hardhat");
 
 async function main() {
   // Contract addresses
@@ -12,38 +9,29 @@ async function main() {
   const AAVE_POOL_PROVIDER = "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e";
   const FEE_COLLECTOR = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 
-  console.log("Deploying YieldAggregator with the following addresses:");
-  console.log("WETH Address:", WETH_ADDRESS);
-  console.log("AAVE WETH Address:", AAVE_WETH_ADDRESS);
-  console.log("Compound Proxy:", COMPOUND_PROXY);
-  console.log("AAVE Pool Provider:", AAVE_POOL_PROVIDER);
-  console.log("Fee Collector:", FEE_COLLECTOR);
-
   try {
-    // Connect to the local network
-    const provider = new ethers.getDefaultProvider("http://127.0.0.1:8545");
+    // Get the deployer's address
+    const [deployer] = await ethers.getSigners();
+    console.log("Deploying contracts with the account:", deployer.address);
 
-    // Get the deployer's private key - replace with your private key or use env variable
-    const privateKey = process.env.PRIVATE_KEY;
-    const wallet = new ethers.Wallet(privateKey, provider);
+    // Get balance using provider
+    const balance = await ethers.provider.getBalance(deployer.address);
+    console.log("Account balance:", ethers.formatEther(balance));
 
-    console.log("\nDeployer address:", wallet.address);
+    console.log("\nDeploying YieldAggregator with the following addresses:");
+    console.log("WETH Address:", WETH_ADDRESS);
+    console.log("AAVE WETH Address:", AAVE_WETH_ADDRESS);
+    console.log("Compound Proxy:", COMPOUND_PROXY);
+    console.log("AAVE Pool Provider:", AAVE_POOL_PROVIDER);
+    console.log("Fee Collector:", FEE_COLLECTOR);
 
-    // Get the wallet's balance
-    const balance = await provider.getBalance(wallet.address);
-    console.log("Deployer balance:", balance, "ETH");
+    // Get contract factory
+    const Aggregator = await ethers.getContractFactory("YieldAggregator");
+    console.log("\nContract factory created");
 
-    // Create contract factory
-    const factory = new ethers.ContractFactory(
-      YieldAggregatorArtifact.abi,
-      YieldAggregatorArtifact.bytecode,
-      wallet
-    );
-
-    console.log("\nDeploying contract...");
-
-    // Deploy the contract with specified gas settings
-    const deploymentTransaction = await factory.deploy(
+    // Deploy contract
+    console.log("Deploying contract...");
+    const aggregator = await Aggregator.deploy(
       WETH_ADDRESS,
       AAVE_WETH_ADDRESS,
       COMPOUND_PROXY,
@@ -51,22 +39,24 @@ async function main() {
       FEE_COLLECTOR
     );
 
-    console.log("Waiting for deployment confirmation...");
+    // Wait for deployment transaction to be mined
+    console.log("Waiting for deployment transaction...");
+    await aggregator.waitForDeployment();
 
-    // Wait for deployment to complete
-    const contract = await deploymentTransaction.deployed();
-    console.log("\nContract deployed successfully!");
-    console.log("Contract address:", contract.address);
+    // Get the deployed contract address
+    const contractAddress = await aggregator.getAddress();
+    console.log("Contract deployed successfully!");
+    console.log("Contract address:", contractAddress);
 
-    // // Get deployment transaction receipt
-    // const receipt = await deploymentTransaction.deployTransaction.wait();
-    // console.log("Gas used:", receipt.gasUsed.toString());
-    // console.log("Block number:", receipt.blockNumber);
+    // Get current block number
+    const blockNumber = await ethers.provider.getBlockNumber();
+    console.log("Current block number:", blockNumber);
 
-    // // Save deployment information
-    // await saveFrontendFiles(contract, receipt.blockNumber);
-
-    // return contract;
+    return {
+      address: contractAddress,
+      deployer: deployer.address,
+      blockNumber: blockNumber,
+    };
   } catch (error) {
     console.error("\nDeployment Error:");
     if (error.reason) console.error("Reason:", error.reason);
@@ -76,48 +66,13 @@ async function main() {
   }
 }
 
-async function saveFrontendFiles(contract, blockNumber) {
-  const contractsDir = path.join(__dirname, "..", "constants");
-
-  if (!fs.existsSync(contractsDir)) {
-    fs.mkdirSync(contractsDir, { recursive: true });
-  }
-
-  // Save contract address and deployment info
-  const deploymentInfo = {
-    address: contract.address,
-    deploymentBlock: blockNumber,
-    timestamp: new Date().toISOString(),
-  };
-
-  fs.writeFileSync(
-    path.join(contractsDir, "YieldAggregator-address.json"),
-    JSON.stringify(deploymentInfo, undefined, 2)
-  );
-
-  // Save ABI
-  fs.writeFileSync(
-    path.join(contractsDir, "YieldAggregator.json"),
-    JSON.stringify(YieldAggregatorArtifact, null, 2)
-  );
-
-  console.log("\nContract files saved to constants directory");
-}
-
-// Add this to handle unhandled promise rejections
-process.on("unhandledRejection", (error) => {
-  console.error("Unhandled promise rejection:", error);
-  process.exit(1);
-});
-
 // Execute deployment
-if (require.main === module) {
-  main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-      console.error(error);
-      process.exit(1);
-    });
-}
-
-module.exports = main;
+main()
+  .then((deploymentInfo) => {
+    console.log("\nDeployment Info:", deploymentInfo);
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
