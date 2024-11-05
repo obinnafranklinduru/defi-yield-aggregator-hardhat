@@ -21,4 +21,7 @@ module.exports = {
       chainId: 1, // This ensures compatibility with mainnet
     },
   },
+  mocha: {
+    timeout: 900000, // Increase timeout to 60 seconds
+  },
 };

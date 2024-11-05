@@ -7,6 +7,7 @@ async function main() {
   const AAVE_WETH_ADDRESS = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8";
   const COMPOUND_PROXY = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
   const AAVE_POOL_PROVIDER = "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e";
+  const AAVE_POOL_ADDRESS = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
   const FEE_COLLECTOR = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 
   try {
@@ -23,6 +24,7 @@ async function main() {
     console.log("AAVE WETH Address:", AAVE_WETH_ADDRESS);
     console.log("Compound Proxy:", COMPOUND_PROXY);
     console.log("AAVE Pool Provider:", AAVE_POOL_PROVIDER);
+    console.log("AAVE Pool Address:", AAVE_POOL_ADDRESS);
     console.log("Fee Collector:", FEE_COLLECTOR);
 
     // Get contract factory
@@ -36,6 +38,7 @@ async function main() {
       AAVE_WETH_ADDRESS,
       COMPOUND_PROXY,
       AAVE_POOL_PROVIDER,
+      AAVE_POOL_ADDRESS,
       FEE_COLLECTOR
     );
 

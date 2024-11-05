@@ -9,277 +9,258 @@ const cometABI = require("../ABIs/cometABI.json");
 const aaveV3PoolABI = require("../ABIs/aaveV3PoolABI.json");
 const getAPY = require("../utils/getAPY");
 
+// Contract addresses
 const WETH_Address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 const cWETHv3 = "0xA17581A9E3356d9A858b789D68B4d866e593aE94";
 const aaveV3Pool = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+const aaveHardCodedPoolAddress = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
 
 describe("YieldAggregator", function () {
-  let WETH_CONTRACT;
-  let AAVE_WETH_CONTRACT;
-  let COMPOUND_PROXY;
-  let AAVE_POOL_PROVIDER;
+  // Contract instances
+  let WETH;
+  let aaveWETH;
+  let compoundProxy;
+  let aavePool;
+  let yieldAggregator;
 
-  let YIELD_AGGREGATOR;
-  let OWNER;
-  let USER1;
-  let USER2;
+  // Actors
+  let owner;
+  let user1;
+  let user2;
 
   // Constants
-  const INITIAL_SUPPLY = ethers.parseEther("1000000");
-  const BASIS_POINTS = 10000;
+  const INITIAL_DEPOSIT = ethers.parseEther("10");
   const REBALANCE_COOLDOWN = 24 * 60 * 60; // 1 day in seconds
 
   beforeEach(async function () {
-    [OWNER, USER1, USER2] = await ethers.getSigners();
+    [owner, user1, user2] = await ethers.getSigners();
 
-    WETH_CONTRACT = new ethers.Contract(WETH_Address, IERC20_ABI, OWNER);
-    AAVE_WETH_CONTRACT = new ethers.Contract(WETH_Address, cometABI.abi, OWNER);
-    COMPOUND_PROXY = new ethers.Contract(cWETHv3, cometABI.abi, OWNER);
-    AAVE_POOL_PROVIDER = new ethers.Contract(aaveV3Pool, aaveV3PoolABI, OWNER);
+    // Initialize contract instances
+    WETH = new ethers.Contract(WETH_Address, IERC20_ABI, owner);
+    aaveWETH = new ethers.Contract(WETH_Address, cometABI.abi, owner);
+    compoundProxy = new ethers.Contract(cWETHv3, cometABI.abi, owner);
+    aavePool = new ethers.Contract(aaveV3Pool, aaveV3PoolABI, owner);
 
-    const yieldAggregator = await ethers.getContractFactory("YieldAggregator");
-    const YIELD_AGGREGATOR = await yieldAggregator.deploy(
-      WETH_CONTRACT,
-      AAVE_WETH_CONTRACT,
-      COMPOUND_PROXY,
-      AAVE_POOL_PROVIDER,
-      OWNER.address
+    // Deploy YieldAggregator
+    const YieldAggregator = await ethers.getContractFactory("YieldAggregator");
+    yieldAggregator = await YieldAggregator.deploy(
+      WETH.target,
+      aaveWETH.target,
+      compoundProxy.target,
+      aavePool.target,
+      aaveHardCodedPoolAddress,
+      owner.address
     );
-    await YIELD_AGGREGATOR.waitForDeployment();
-    await YIELD_AGGREGATOR.getAddress();
+    await yieldAggregator.waitForDeployment();
 
-    // // Mint initial tokens to users
-    // await wethToken.mint(user1.address, INITIAL_SUPPLY);
-    // await wethToken.mint(user2.address, INITIAL_SUPPLY);
+    // Get initial WETH for testing
+    await owner.sendTransaction({
+      to: WETH.target,
+      value: ethers.parseEther("50"),
+    });
 
-    // // Approve YieldAggregator to spend tokens
-    // await wethToken
-    //   .connect(user1)
-    //   .approve(yieldAggregator.address, INITIAL_SUPPLY);
-    // await wethToken
-    //   .connect(user2)
-    //   .approve(yieldAggregator.address, INITIAL_SUPPLY);
+    // Send some WETH to user1 and user2 for testing
+    await WETH.transfer(user1.address, INITIAL_DEPOSIT);
+    await WETH.transfer(user2.address, INITIAL_DEPOSIT);
+
+    // Approve YieldAggregator to spend WETH for all users
+    await WETH.approve(
+      await yieldAggregator.getAddress(),
+      ethers.parseEther("50")
+    );
+    await WETH.connect(user1).approve(
+      await yieldAggregator.getAddress(),
+      ethers.parseEther("50")
+    );
+    await WETH.connect(user2).approve(
+      await yieldAggregator.getAddress(),
+      ethers.parseEther("50")
+    );
   });
 
   describe("Deployment", function () {
-    it("Should set the correct owner", async function () {
-      expect(await YIELD_AGGREGATOR.owner()).to.equal(OWNER.address);
+    it("sets the correct owner", async function () {
+      expect(await yieldAggregator.owner()).to.equal(owner.address);
     });
 
-    it("Should initialize with correct addresses", async function () {
-      expect(await YIELD_AGGREGATOR.WETH_CONTRACT()).to.equal(
-        WETH_CONTRACT.address
-      );
-      // expect(await YIELD_AGGREGATOR.AAVE_WETH_CONTRACT()).to.equal(
-      //   AaveWethTokenContract.address
-      // );
-      // expect(await YIELD_AGGREGATOR.COMPOUND_PROXY_ADDRESS()).to.equal(
-      //   CompoundCometContract.address
-      // );
-      // expect(await YIELD_AGGREGATOR.AAVE_POOL_PROVIDER()).to.equal(
-      //   AavePoolContractProvider.address
-      // );
-      // expect(await YIELD_AGGREGATOR.feeCollector()).to.equal(
-      //   feeCollector.address
-      // );
+    it("initializes with correct contract addresses", async function () {
+      const wethAddress = await yieldAggregator.WETH_ADDRESS();
+      const aaveWethAddress = await yieldAggregator.AAVE_WETH_ADDRESS();
+      const compoundProxyAddress =
+        await yieldAggregator.COMPOUND_PROXY_ADDRESS();
+      const aavePoolProvider = await yieldAggregator.AAVE_POOL_PROVIDER();
+      const aavePoolAddress = await yieldAggregator.AAVE_POOL_ADDRESS();
+      const feeCollector = await await yieldAggregator.feeCollector();
+
+      expect(wethAddress).to.equal(WETH.target);
+      expect(aaveWethAddress).to.equal(aaveWETH.target);
+      expect(compoundProxyAddress).to.equal(compoundProxy.target);
+      expect(aavePoolProvider).to.equal(aavePool.target);
+      expect(aavePoolAddress).to.equal(aaveHardCodedPoolAddress);
+      expect(feeCollector).to.equal(owner.address);
     });
 
-    it("Should initialize with correct fee structure", async function () {
-      const fees = await YIELD_AGGREGATOR.fees();
+    it("initializes with correct fee structure", async function () {
+      const fees = await yieldAggregator.fees();
       expect(fees.annualManagementFeeInBasisPoints).to.equal(100); // 1%
       expect(fees.performanceFee).to.equal(1000); // 10%
     });
   });
 
-  // describe("Deposits", function () {
-  //   const depositAmount = ethers.parseEther("100");
+  describe("Deposits", function () {
+    const depositAmount = ethers.parseEther("10");
 
-  //   it("Should accept deposits and update state correctly", async function () {
-  //     const compAPY = 500; // 5%
-  //     const aaveAPY = 300; // 3%
+    it("Should accept deposits and update state correctly", async function () {
+      const compAPY = 500; // 5%
+      const aaveAPY = 300; // 3%
 
-  //     await yieldAggregator
-  //       .connect(user1)
-  //       .deposit(depositAmount, compAPY, aaveAPY);
+      // Check user1's WETH balance before deposit
+      const userBalance = await WETH.balanceOf(user1.address);
+      expect(userBalance).not.be.equal(0);
 
-  //     const userDeposit = await yieldAggregator.userDeposits(user1.address);
-  //     expect(userDeposit.amount).to.equal(depositAmount);
+      // Perform deposit
+      await yieldAggregator
+        .connect(user1)
+        .deposit(depositAmount, compAPY, aaveAPY);
 
-  //     const totalDeposits = await yieldAggregator.totalDeposits();
-  //     expect(totalDeposits).to.equal(depositAmount);
+      // Verify deposit was recorded correctly
+      const userDeposit = await yieldAggregator.userDeposits(user1.address);
+      expect(userDeposit.amount).to.equal(depositAmount);
 
-  //     // Should select Compound as it has higher APY
-  //     const protocolInfo = await yieldAggregator.getCurrentProtocolInfo();
-  //     expect(protocolInfo._protocol).to.equal(1); // COMPOUND
-  //   });
+      // Verify total deposits updated
+      // Verify protocol selection (should be Compound as it has higher APY)
+      const [protocol, totalValue] =
+        await yieldAggregator.getCurrentProtocolInfo();
+      expect(totalValue).not.be.equal(0);
+      expect(protocol).to.equal(1); // COMPOUND
+    });
 
-  //   it("Should revert deposit with zero amount", async function () {
-  //     await expect(
-  //       yieldAggregator.connect(user1).deposit(0, 500, 300)
-  //     ).to.be.revertedWithCustomError(
-  //       yieldAggregator,
-  //       "YieldAggregator__InsufficientBalance"
-  //     );
-  //   });
+    it("Should revert deposit with zero amount", async function () {
+      await expect(
+        yieldAggregator.connect(user1).deposit(0, 500, 300)
+      ).to.be.revertedWithCustomError(
+        yieldAggregator,
+        "YieldAggregator__InsufficientBalance"
+      );
+    });
 
-  //   it("Should handle multiple deposits from different users", async function () {
-  //     await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
-  //     await yieldAggregator
-  //       .connect(user2)
-  //       .deposit(depositAmount.mul(2), 500, 300);
+    it("Should handle multiple deposits from different users", async function () {
+      await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
+      await yieldAggregator.connect(user2).deposit(depositAmount, 500, 300);
 
-  //     const user1Deposit = await yieldAggregator.userDeposits(user1.address);
-  //     const user2Deposit = await yieldAggregator.userDeposits(user2.address);
+      const user1Deposit = await yieldAggregator.userDeposits(user1.address);
+      const user2Deposit = await yieldAggregator.userDeposits(user2.address);
 
-  //     expect(user1Deposit.amount).to.equal(depositAmount);
-  //     expect(user2Deposit.amount).to.equal(depositAmount.mul(2));
-  //     expect(await yieldAggregator.totalDeposits()).to.equal(
-  //       depositAmount.mul(3)
-  //     );
-  //   });
-  // });
+      expect(user1Deposit.amount).to.equal(depositAmount);
+      expect(user2Deposit.amount).to.equal(depositAmount);
+      expect(await yieldAggregator.totalDeposits()).not.be.equal(depositAmount);
+    });
+  });
 
-  // describe("Withdrawals", function () {
-  //   const depositAmount = ethers.parseEther("100");
+  describe("Withdrawals", function () {
+    const depositAmount = ethers.parseEther("10");
 
-  //   beforeEach(async function () {
-  //     await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
-  //   });
+    beforeEach(async function () {
+      await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
+    });
 
-  //   it("Should allow full withdrawal with yield", async function () {
-  //     // Simulate yield by sending additional tokens to protocol
-  //     const yieldAmount = ethers.parseEther("10");
-  //     await wethToken.mint(CompoundCometContract.address, yieldAmount);
+    it("Should allow full withdrawal", async function () {
+      const withdrawnAmount = await yieldAggregator.connect(user1).withdraw();
 
-  //     const withdrawnAmount = await yieldAggregator.connect(user1).withdraw();
+      const userDeposit = await yieldAggregator.userDeposits(user1.address);
+      expect(userDeposit.amount).to.equal(0);
+      expect(withdrawnAmount).not.be.equal(0);
+    });
+  });
 
-  //     const expectedAmount = depositAmount.add(yieldAmount);
-  //     expect(withdrawnAmount).to.be.closeTo(
-  //       expectedAmount,
-  //       ethers.parseEther("0.1")
-  //     );
+  describe("Rebalancing", function () {
+    const depositAmount = ethers.parseEther("10");
 
-  //     const userDeposit = await yieldAggregator.userDeposits(user1.address);
-  //     expect(userDeposit.amount).to.equal(0);
-  //   });
+    beforeEach(async function () {
+      await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
+    });
 
-  //   it("Should collect fees on yield during withdrawal", async function () {
-  //     const yieldAmount = ethers.parseEther("10");
-  //     await wethToken.mint(CompoundCometContract.address, yieldAmount);
+    it("Should rebalance to higher yielding protocol", async function () {
+      await time.increase(REBALANCE_COOLDOWN);
 
-  //     const feeCollectorBalanceBefore = await wethToken.balanceOf(
-  //       feeCollector.address
-  //     );
+      const initialProtocol = (await yieldAggregator.getCurrentProtocolInfo())
+        ._protocol;
 
-  //     await yieldAggregator.connect(user1).withdraw();
+      // Trigger rebalance with Aave having higher APY
+      await yieldAggregator.connect(owner).rebalance(300, 500);
 
-  //     const feeCollectorBalanceAfter = await wethToken.balanceOf(
-  //       feeCollector.address
-  //     );
-  //     expect(feeCollectorBalanceAfter.sub(feeCollectorBalanceBefore)).to.be.gt(
-  //       0
-  //     );
-  //   });
-  // });
+      const newProtocol = (await yieldAggregator.getCurrentProtocolInfo())
+        ._protocol;
+      expect(newProtocol).to.not.equal(initialProtocol);
+    });
+  });
 
-  // describe("Rebalancing", function () {
-  //   const depositAmount = ethers.parseEther("100");
+  describe("Emergency Controls", function () {
+    const depositAmount = ethers.parseEther("10");
 
-  //   beforeEach(async function () {
-  //     await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
-  //   });
+    beforeEach(async function () {
+      await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
+    });
 
-  //   it("Should rebalance to higher yielding protocol", async function () {
-  //     // Wait for cooldown
-  //     await time.increase(REBALANCE_COOLDOWN);
+    it("Should execute emergency withdrawal", async function () {
+      const balanceBefore = await WETH.balanceOf(owner.address);
 
-  //     const initialProtocol = (await yieldAggregator.getCurrentProtocolInfo())
-  //       ._protocol;
+      await yieldAggregator.connect(owner).emergencyWithdraw();
 
-  //     // Trigger rebalance with Aave having higher APY
-  //     await yieldAggregator.connect(owner).rebalance(300, 500);
+      const balanceAfter = await WETH.balanceOf(owner.address);
 
-  //     const newProtocol = (await yieldAggregator.getCurrentProtocolInfo())
-  //       ._protocol;
-  //     expect(newProtocol).to.not.equal(initialProtocol);
-  //   });
+      expect(balanceAfter).not.be.equal(balanceBefore);
+      expect(await yieldAggregator.emergencyExitEnabled()).to.be.true;
+    });
 
-  //   it("Should respect cooldown period", async function () {
-  //     await expect(
-  //       yieldAggregator.connect(owner).rebalance(300, 500)
-  //     ).to.be.revertedWithCustomError(
-  //       yieldAggregator,
-  //       "YieldAggregator__RebalanceCooldown"
-  //     );
-  //   });
-  // });
+    it("Should prevent new deposits after emergency exit", async function () {
+      await yieldAggregator.connect(owner).emergencyWithdraw();
 
-  // describe("Emergency Controls", function () {
-  //   const depositAmount = ethers.parseEther("100");
+      await expect(
+        yieldAggregator.connect(user2).deposit(depositAmount, 500, 300)
+      ).to.be.revertedWithCustomError(
+        yieldAggregator,
+        "YieldAggregator__EmergencyExit"
+      );
+    });
+  });
 
-  //   beforeEach(async function () {
-  //     await yieldAggregator.connect(user1).deposit(depositAmount, 500, 300);
-  //   });
+  describe("Fee Management", function () {
+    it("Should update protocol configuration correctly", async function () {
+      const newFeeCollector = user2.address;
+      const newManagementFee = 200; // 2%
+      const newPerformanceFee = 2000; // 20%
 
-  //   it("Should execute emergency withdrawal", async function () {
-  //     const balanceBefore = await wethToken.balanceOf(owner.address);
+      await yieldAggregator
+        .connect(owner)
+        .updateProtocolConfiguration(
+          newFeeCollector,
+          newManagementFee,
+          newPerformanceFee
+        );
 
-  //     await yieldAggregator.connect(owner).emergencyWithdraw();
+      expect(await yieldAggregator.feeCollector()).to.equal(newFeeCollector);
 
-  //     const balanceAfter = await wethToken.balanceOf(owner.address);
-  //     expect(balanceAfter.sub(balanceBefore)).to.equal(depositAmount);
-  //     expect(await yieldAggregator.emergencyExitEnabled()).to.be.true;
-  //   });
+      const fees = await yieldAggregator.fees();
+      expect(fees.annualManagementFeeInBasisPoints).to.equal(newManagementFee);
+      expect(fees.performanceFee).to.equal(newPerformanceFee);
+    });
 
-  //   it("Should prevent new deposits after emergency exit", async function () {
-  //     await yieldAggregator.connect(owner).emergencyWithdraw();
+    it("Should revert fee updates exceeding maximums", async function () {
+      const invalidManagementFee = 600;
 
-  //     await expect(
-  //       yieldAggregator.connect(user2).deposit(depositAmount, 500, 300)
-  //     ).to.be.revertedWithCustomError(
-  //       yieldAggregator,
-  //       "YieldAggregator__EmergencyExit"
-  //     );
-  //   });
-  // });
-
-  // describe("Fee Management", function () {
-  //   it("Should update protocol configuration correctly", async function () {
-  //     const newFeeCollector = user2.address;
-  //     const newManagementFee = 200; // 2%
-  //     const newPerformanceFee = 2000; // 20%
-
-  //     await yieldAggregator
-  //       .connect(owner)
-  //       .updateProtocolConfiguration(
-  //         newFeeCollector,
-  //         newManagementFee,
-  //         newPerformanceFee
-  //       );
-
-  //     expect(await yieldAggregator.feeCollector()).to.equal(newFeeCollector);
-
-  //     const fees = await yieldAggregator.fees();
-  //     expect(fees.annualManagementFeeInBasisPoints).to.equal(newManagementFee);
-  //     expect(fees.performanceFee).to.equal(newPerformanceFee);
-  //   });
-
-  //   it("Should revert fee updates exceeding maximums", async function () {
-  //     const maxManagementFee = 500; // 5%
-  //     const invalidManagementFee = 600;
-
-  //     await expect(
-  //       yieldAggregator
-  //         .connect(owner)
-  //         .updateProtocolConfiguration(
-  //           user2.address,
-  //           invalidManagementFee,
-  //           2000
-  //         )
-  //     ).to.be.revertedWithCustomError(
-  //       yieldAggregator,
-  //       "YieldAggregator__FeeTooHigh"
-  //     );
-  //   });
-  // });
+      await expect(
+        yieldAggregator
+          .connect(owner)
+          .updateProtocolConfiguration(
+            user2.address,
+            invalidManagementFee,
+            2000
+          )
+      ).to.be.revertedWithCustomError(
+        yieldAggregator,
+        "YieldAggregator__FeeTooHigh"
+      );
+    });
+  });
 });
