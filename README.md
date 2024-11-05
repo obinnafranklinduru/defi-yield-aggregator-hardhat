@@ -186,7 +186,7 @@ The contract emits several key events to notify external systems of state change
 
    ```bash
    git clone https://github.com/obinnafranklinduru/defi-yield-aggregator-hardhat.git
-   cd defi-yield-aggregator
+   cd defi-yield-aggregator-hardhat
    ```
 
 2. Create a `.env` file use `.env.example` template to make it. You will also need to get an Alchemy API key and add that to the ENV file.
