@@ -97,6 +97,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     IComet public immutable compoundComet;
     IPool private aavePool;
 
+    //  Events
     event Deposit(address indexed user, uint256 amount, ProtocolType protocol, uint256 timestamp);
     event Withdrawal(address indexed user, uint256 amount, ProtocolType protocol, uint256 yield);
     event EmergencyWithdrawal(address indexed owner, uint256 amount, ProtocolType protocol);
@@ -110,7 +111,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     );
     event AavePoolProviderError(bytes reason);
 
-    // Events
+    // Modifier
     modifier onlyEmergencyAdmin() {
         if (!emergencyAdmins[msg.sender] && msg.sender != owner()) {
             revert YieldAggregator__InvalidAddress(msg.sender);
