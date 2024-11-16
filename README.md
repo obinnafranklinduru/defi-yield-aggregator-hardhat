@@ -202,7 +202,7 @@ The contract emits several key events to notify external systems of state change
 4. Open a new terminal and deploy the smart contract in the `localhost` network
 
    ```shell
-   npx hardhat run --network localhost scripts/DeployYieldAggregator.js
+   npx hardhat run --network hardhat scripts/DeployYieldAggregator.js
    ```
 
 5. Get WETH in your wallet. Running this script will turn 100 ETH to 100 WETH
